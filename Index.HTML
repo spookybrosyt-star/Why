@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Philosophy Generator</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for appearance */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #171717; /* Neutral 900 - Black */
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 2rem 1rem;
+            color: #d4d4d4; /* Light gray text for contrast */
+        }
+        .app-container {
+            max-width: 900px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+        .header-card {
+            background-color: #262626; /* Neutral 800 - Dark Gray */
+            padding: 2.5rem; /* Increased padding for polish */
+            border-radius: 1.5rem;
+            box-shadow: 0 15px 30px -10px rgba(0, 0, 0, 0.5), 0 5px 15px -5px rgba(0, 0, 0, 0.2); /* Deeper shadow */
+            border: 1px solid #404040;
+        }
+        .input-area {
+            display: flex;
+            gap: 1rem;
+        }
+        #user-input {
+            transition: box-shadow 0.2s, border-color 0.2s;
+            background-color: #404040; /* Neutral 700 - Medium Dark Gray */
+            color: white;
+            border: 1px solid #525252;
+        }
+        .result-panel {
+            min-height: 250px;
+            background-color: #262626; /* Neutral 800 */
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            border: 1px solid #404040;
+        }
+        .loading-spinner {
+            border: 4px solid #404040; /* Darker border for background */
+            border-top: 4px solid #a855f7; /* Violet 500 accent */
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin-right: 0.5rem;
+            display: none;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .analysis-text strong {
+            color: #c084fc; /* Violet 400 - Highlight generated concept */
+            font-weight: 700;
+        }
+        .history-item {
+            border-left: 3px solid #c084fc; /* Violet accent border */
+            padding-left: 1rem; /* Slightly more padding */
+            margin-bottom: 1rem;
+            background-color: #262626; /* Dark gray for history items */
+            border-radius: 0.5rem;
+            padding-top: 0.75rem;
+            padding-bottom: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- Header and Input Section -->
+        <header class="header-card">
+            <h1 class="text-4xl font-extrabold flex items-center mb-2">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-9 h-9 mr-3 text-violet-500">
+                    <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 6a.75.75 0 0 0-1.5 0v6c0 .414.336.75.75.75h4.5a.75.75 0 0 0 0-1.5h-3.75V6Z" clip-rule="evenodd" />
+                </svg>
+                AI Philosophy Generator
+            </h1>
+            <p class="text-neutral-400 mb-8 text-lg">Input any statement or observation below, and receive a formal, objective philosophical analysis.</p>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <input type="text" id="user-input" placeholder="Enter your statement here (e.g., 'Watching a movie is just organized staring')" class="flex-grow p-4 rounded-lg text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 disabled:bg-neutral-700/50" disabled>
+                <button id="send-button" class="bg-violet-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-violet-500 transition duration-200 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-violet-800/20" disabled>
+                    <div id="loader" class="loading-spinner"></div>
+                    <span id="send-text">Analyze</span>
+                </button>
+            </div>
+            <div id="auth-status" class="text-sm text-neutral-400 mt-4 flex justify-between">
+                <span id="auth-message">Initializing...</span>
+                <span id="user-display">Loading User...</span>
+            </div>
+        </header>
+
+        <!-- Result Panel -->
+        <section class="w-full">
+            <h2 class="text-2xl font-bold text-neutral-200 mb-3">Philosophical Analysis</h2>
+            <div id="result-container" class="result-panel flex items-center justify-center text-neutral-400 text-center">
+                Awaiting your first philosophical input.
+            </div>
+
+            <!-- History Section (Non-Chat) -->
+            <h3 class="text-xl font-bold text-neutral-200 mt-8 mb-3 border-b border-neutral-700 pb-1">Previous Analyses</h3>
+            <div id="history-container" class="space-y-4">
+                <p id="no-history" class="text-neutral-500 text-sm">History will appear here.</p>
+            </div>
+        </section>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Configuration and Global State ---
+        const MODEL_NAME = "gemini-2.5-flash-preview-09-2025";
+        const API_KEY = ""; // Canvas environment handles API Key
+        const API_URL_BASE = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
+        const MAX_RETRIES = 5;
+
+        // Environment variables (Mandatory for this environment)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app;
+        let db;
+        let auth;
+        let userId = null;
+
+        let isSending = false;
+
+        // --- DOM Elements ---
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const loader = document.getElementById('loader');
+        const sendText = document.getElementById('send-text');
+        const userDisplay = document.getElementById('user-display');
+        const authMessage = document.getElementById('auth-message');
+        const resultContainer = document.getElementById('result-container');
+        const historyContainer = document.getElementById('history-container');
+        const noHistory = document.getElementById('no-history');
+
+        // --- System Prompt for the AI Philosophy Engine (Objective Persona) ---
+        const SYSTEM_PROMPT = `
+            The function of this system is to transform raw user input into formal philosophical concepts and provide objective analysis.
+            The response must adhere strictly to the following structure and tone:
+            1.  **Analysis & Transmutation:** Identify the core premise of the input and reframe it into a structured, formal philosophical principle.
+            2.  **Elaboration:** Provide a concise (under 150 words), objective, and deep philosophical analysis. Reference relevant schools of thought (e.g., Existentialism, Stoicism, Rationalism) or established concepts (e.g., dialectics, dualism, utilitarianism).
+            3.  **Formatting:** Use clear, formal, and academic language. Use **bold text** to highlight the formal philosophical concept generated from the user's statement. Use markdown lists if appropriate for clarity.
+            4.  **Conclusion:** Conclude the analysis with a single, specific, and thought-provoking question related to the concept for continued reflection. Do not use conversational openings or closings.
+        `;
+
+        // --- Utility Functions ---
+
+        /**
+         * Converts markdown text (specifically bold and line breaks) to HTML.
+         * @param {string} text 
+         * @returns {string} HTML formatted text
+         */
+        function formatMarkdown(text) {
+            let htmlText = text.replace(/\n/g, '<br>');
+            htmlText = htmlText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            return htmlText;
+        }
+
+        /**
+         * Renders the current analysis result in the main container.
+         * @param {string} userStatement - The input statement.
+         * @param {string} aiAnalysis - The AI's philosophical analysis.
+         */
+        function renderAnalysis(userStatement, aiAnalysis) {
+            resultContainer.innerHTML = `
+                <div class="analysis-card">
+                    <p class="text-sm text-neutral-400 mb-2">Input Statement:</p>
+                    <p class="text-lg font-medium text-violet-300 p-3 bg-neutral-700 rounded-lg mb-6 shadow-inner">${userStatement}</p>
+                    
+                    <p class="text-sm text-neutral-400 mb-2">Philosophical Analysis:</p>
+                    <div class="text-neutral-300 analysis-text text-base leading-relaxed">
+                        ${formatMarkdown(aiAnalysis)}
+                    </div>
+                </div>
+            `;
+            // Add to history
+            addToHistory(userStatement, aiAnalysis);
+        }
+
+        /**
+         * Adds the completed analysis to the history list.
+         * @param {string} userStatement - The input statement.
+         * @param {string} aiAnalysis - The AI's philosophical analysis.
+         */
+        function addToHistory(userStatement, aiAnalysis) {
+            if (noHistory) noHistory.style.display = 'none';
+            
+            const historyItem = document.createElement('div');
+            historyItem.className = 'history-item p-3 hover:bg-neutral-700 transition duration-150 rounded-md';
+            
+            // Extract the generated concept (the bolded text) for the history summary
+            const boldMatch = aiAnalysis.match(/\*\*(.*?)\*\*/);
+            const conceptSummary = boldMatch ? boldMatch[1] : 'Analysis Complete';
+
+            historyItem.innerHTML = `
+                <p class="font-semibold text-neutral-200">${conceptSummary}</p>
+                <p class="text-sm text-neutral-400 italic mt-0.5">Input: "${userStatement.substring(0, 50)}${userStatement.length > 50 ? '...' : ''}"</p>
+            `;
+            
+            // Use prepend to show the newest result at the top of the history list
+            historyContainer.prepend(historyItem);
+            
+            // Limit history display to, say, 10 items
+            while (historyContainer.children.length > 10) {
+                historyContainer.removeChild(historyContainer.lastChild);
+            }
+        }
+
+        /**
+         * Handles the UI state for sending messages.
+         * @param {boolean} loading - True to show loading state, false to hide.
+         */
+        function setLoadingState(loading) {
+            isSending = loading;
+            userInput.disabled = loading || !userId;
+            sendButton.disabled = loading || userInput.value.trim() === '';
+            loader.style.display = loading ? 'block' : 'none';
+            sendText.textContent = loading ? 'Analyzing...' : 'Analyze';
+
+            if (loading) {
+                resultContainer.innerHTML = '<div class="flex flex-col items-center justify-center h-full"><div class="loading-spinner" style="display:block; border-top-color:#a855f7; width:40px; height:40px; margin-right:0;"></div><p class="text-violet-500 mt-4 font-semibold">Generating Analysis...</p></div>';
+            }
+        }
+
+        // --- Firebase Initialization and Auth ---
+
+        async function initializeFirebase() {
+            authMessage.textContent = "Connecting to Firebase...";
+            try {
+                if (firebaseConfig) {
+                    app = initializeApp(firebaseConfig);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+
+                    // Sign in using the custom token or anonymously
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                        console.log("Signed in with custom token.");
+                    } else {
+                        await signInAnonymously(auth);
+                        console.log("Signed in anonymously.");
+                    }
+
+                    onAuthStateChanged(auth, (user) => {
+                        if (user) {
+                            userId = user.uid;
+                            userDisplay.textContent = `User ID: ${userId.substring(0, 8)}...`;
+                            authMessage.textContent = "Status: Authenticated";
+                            userInput.disabled = false;
+                            
+                        } else {
+                            userId = null;
+                            userDisplay.textContent = 'Guest';
+                            authMessage.textContent = "Status: Anonymous";
+                            userInput.disabled = true;
+                        }
+                    });
+                } else {
+                    console.error("Firebase configuration is missing.");
+                    authMessage.textContent = "Error: Config Missing";
+                }
+            } catch (error) {
+                console.error("Firebase Initialization or Auth Error:", error);
+                authMessage.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // --- Gemini API Logic ---
+
+        /**
+         * Calls the Gemini API with exponential backoff.
+         * @param {string} userQuery - The single input query.
+         * @returns {Promise<string>} - The generated text response.
+         */
+        async function callGeminiApi(userQuery) {
+            for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+                try {
+                    const payload = {
+                        contents: [{ role: 'user', parts: [{ text: userQuery }] }],
+                        systemInstruction: {
+                            parts: [{ text: SYSTEM_PROMPT }]
+                        },
+                        config: {
+                             maxOutputTokens: 300, 
+                        }
+                    };
+
+                    const response = await fetch(API_URL_BASE, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        const candidate = result.candidates?.[0];
+
+                        if (candidate && candidate.content?.parts?.[0]?.text) {
+                            return candidate.content.parts[0].text;
+                        }
+                        throw new Error("API response was valid but contained no text content.");
+                    } else if (response.status === 429 && attempt < MAX_RETRIES - 1) {
+                        const delay = Math.pow(2, attempt) * 1000 + (Math.random() * 1000);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue;
+                    } else {
+                        throw new Error(`API call failed with status: ${response.status}`);
+                    }
+
+                } catch (error) {
+                    if (attempt === MAX_RETRIES - 1) {
+                        throw new Error(`Failed to communicate with AI after ${MAX_RETRIES} attempts. ${error.message}`);
+                    }
+                    if (!error.message.includes('Rate limit hit')) {
+                         const delay = Math.pow(2, attempt) * 1000 + (Math.random() * 500);
+                         await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                }
+            }
+        }
+
+
+        // --- Main Philosophy Logic ---
+
+        /**
+         * Sends the user's statement and triggers the analysis.
+         */
+        async function runAnalysis() {
+            const userText = userInput.value.trim();
+            if (!userText || isSending) return;
+
+            setLoadingState(true);
+
+            // Clear input field immediately
+            userInput.value = '';
+
+            try {
+                // 1. Call the Gemini API with the user's statement
+                const aiResponseText = await callGeminiApi(userText);
+                
+                // 2. Render the new result and add to history
+                renderAnalysis(userText, aiResponseText);
+
+            } catch (error) {
+                console.error("AI Response Error:", error);
+                resultContainer.innerHTML = `<p class="text-red-600 font-semibold">Error in Analysis:</p><p class="text-red-500 text-sm">${error.message}</p>`;
+            } finally {
+                setLoadingState(false);
+                sendButton.disabled = true; // Re-disable until new text is typed
+            }
+        }
+
+
+        // --- Event Listeners ---
+
+        sendButton.addEventListener('click', runAnalysis);
+
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !sendButton.disabled) {
+                runAnalysis();
+            }
+        });
+
+        userInput.addEventListener('input', () => {
+            // Enable analyze button only if there is text and not already sending
+            sendButton.disabled = userInput.value.trim() === '' || isSending;
+        });
+
+        // --- Initialize the Application ---
+        window.onload = initializeFirebase;
+
+    </script>
+</body>
+</html>
