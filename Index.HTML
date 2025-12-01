@@ -280,12 +280,25 @@
                         }
                     });
                 } else {
-                    console.error("Firebase configuration is missing.");
-                    authMessage.textContent = "Error: Config Missing";
+                    // --- Resilience added here for missing config ---
+                    console.error("Firebase configuration is missing. Running in non-persistent mode.");
+                    
+                    // Generate a dummy ID and enable the input
+                    userId = 'no-auth-mode-' + crypto.randomUUID().substring(0, 4);
+                    userDisplay.textContent = 'Non-Persistent Mode';
+                    authMessage.textContent = "Warning: Persistence Disabled (Config Missing)";
+                    userInput.disabled = false;
+                    // ------------------------------------------------
                 }
             } catch (error) {
                 console.error("Firebase Initialization or Auth Error:", error);
                 authMessage.textContent = `Error: ${error.message}`;
+                // Also enable input on generic auth failure so the user isn't stuck
+                if (!userId) { 
+                    userId = 'failure-mode-' + crypto.randomUUID().substring(0, 4);
+                    userDisplay.textContent = 'Failure Mode';
+                    userInput.disabled = false;
+                }
             }
         }
 
